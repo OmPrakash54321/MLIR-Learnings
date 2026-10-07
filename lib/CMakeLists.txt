@@ -3,10 +3,8 @@ add_library(MyDialectDefs
     MyOps.cpp
 )
 
-target_include_directories(MyDialectDefs PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    ${CMAKE_CURRENT_BINARY_DIR}/../include
-)
+# .inc files will get generated only after hitting this line
+add_dependencies(MyDialectDefs MyDialectIncGen)
 
 target_link_libraries(MyDialectDefs PRIVATE
     MLIRIR

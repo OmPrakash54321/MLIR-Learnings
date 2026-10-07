@@ -7,7 +7,6 @@
 namespace my_dialect {
 
 mlir::OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
-
     // Return a null OpFoldResult to indicate that constant folding was NOT performed
     return nullptr;
 }

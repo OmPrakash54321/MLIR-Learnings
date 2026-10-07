@@ -1,8 +1,8 @@
 #include "mlir/IR/DialectRegistry.h" // registry that contains all the dialects
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+// #include "mlir/InitAllDialects.h"
 #include "MyDialect.h"
-
 
 int main(int argc, char** argv) {
     mlir::DialectRegistry registry;
@@ -13,6 +13,6 @@ int main(int argc, char** argv) {
 
     // Use MlirOptMain as the entry point
     return mlir::asMainReturnCode(
-        mlir::MlirOptMain(argc, argv, "My Dialect Optimizer\n", registry)
+        mlir::MlirOptMain(argc, argv, "My Custom Opt tool\n", registry)
     );
 }

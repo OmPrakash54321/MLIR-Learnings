@@ -25,6 +25,21 @@ include(AddMLIR)
 include(HandleLLVMOptions)
 
 include_directories(${LLVM_INCLUDE_DIRS} ${MLIR_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
+
+# Points to the root file that includes the dialect.td file
+set(LLVM_TARGET_DEFINITIONS ${CMAKE_CURRENT_SOURCE_DIR}/include/MyOps.td)
+
+# Generate the .inc files inside build/include/
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include)
+mlir_tablegen(include/MyDialect.h.inc -gen-dialect-decls)
+mlir_tablegen(include/MyDialect.cpp.inc -gen-dialect-defs)
+mlir_tablegen(include/MyOps.h.inc -gen-op-decls)
+mlir_tablegen(include/MyOps.cpp.inc -gen-op-defs)
+# Create a target named 'MyDialectIncGen' that forces TableGen to execute
+add_public_tablegen_target(MyDialectIncGen)
+
 
 # look into the child cmake
 add_subdirectory(lib)
