@@ -1,9 +1,29 @@
-add_executable(my-opt my-opt.cpp)
+get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+set(LIBS
+        ${dialect_libs}
+        ${conversion_libs}
+        MLIRAnalysis
+        MLIRCallInterfaces
+        MLIRCastInterfaces
+        MLIRExecutionEngine
+        MLIRIR
+        MLIRLLVMCommonConversion
+        MLIRLLVMToLLVMIRTranslation
+        MLIRMemRefDialect
+        MLIRLLVMDialect
+        MLIRParser
+        MLIRPass
+        MLIRSideEffectInterfaces
+        MLIRSupport
+        MLIRTargetLLVMIRExport
+        MLIRTransforms
+        MLIROptLib
+        MyDialectDefs # --> custom dialect
+        )
+add_llvm_executable(my-opt my-opt.cpp)
 
-target_link_libraries(my-opt PRIVATE
-    MyDialectDefs      # <--- Links custom dialect's compiled logic
-    MLIRFuncDialect    # <--- Fixes the FuncDialect undefined references
-    MLIRIR             # Core MLIR structural definitions
-    MLIROptLib         # Binary execution driver engine for MlirOptMain
-    MLIRSupport        # Lower-level diagnostic routines
-)
+llvm_update_compile_flags(my-opt)
+target_link_libraries(my-opt PRIVATE ${LIBS})
+
+mlir_check_all_link_libraries(my-opt)
