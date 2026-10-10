@@ -1,0 +1,99 @@
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
+
+#include "MyDialectPasses.h"
+
+namespace my_dialect {
+
+// -----------------------------------------------------------------------------
+// Pattern 1: AddOp Conversion Pattern
+// -----------------------------------------------------------------------------
+class ConvertAddOp : public mlir::OpConversionPattern<AddOp> {
+public:
+  using mlir::OpConversionPattern<AddOp>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(AddOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Location loc = op.getLoc();
+    mlir::Type outputType =
+        this->getTypeConverter()->convertType(op.getResult().getType());
+
+    if (!outputType)
+      return rewriter.notifyMatchFailure(op, "type conversion failed");
+
+    // Extract scalar element type to support scalars, vectors, and tensors
+    mlir::Type elemType = mlir::getElementTypeOrSelf(outputType);
+
+    if (llvm::isa<mlir::FloatType>(elemType)) {
+      rewriter.replaceOpWithNewOp<mlir::arith::AddFOp>(
+          op, outputType, adaptor.getA(), adaptor.getB());
+    } else if (llvm::isa<mlir::IntegerType>(elemType)) {
+      rewriter.replaceOpWithNewOp<mlir::arith::AddIOp>(
+          op, outputType, adaptor.getA(), adaptor.getB());
+    } else {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported result element type: expected int or float");
+    }
+
+    return mlir::success();
+  }
+};
+
+// -----------------------------------------------------------------------------
+// Lowering Pass Class
+// -----------------------------------------------------------------------------
+class MyDialectToArithLoweringPass
+    : public impl::MyDialectToArithLoweringPassBase<
+          MyDialectToArithLoweringPass> {
+public:
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<mlir::func::FuncDialect>();
+    registry.insert<mlir::arith::ArithDialect>();
+    registry.insert<mlir::tensor::TensorDialect>();
+    registry.insert<mlir::vector::VectorDialect>();
+  }
+
+  void runOnOperation() override {
+    mlir::ConversionTarget target(getContext());
+
+    // Mark lower-level dialects as legal target states
+    target.addLegalDialect<mlir::arith::ArithDialect,
+                          mlir::tensor::TensorDialect,
+                          mlir::vector::VectorDialect,
+                          mlir::func::FuncDialect>();
+
+    // Mark custom source dialect as illegal
+    target.addIllegalDialect<MyDialect>();
+
+    mlir::TypeConverter typeConverter;
+    typeConverter.addConversion([](mlir::Type type) { return type; });
+
+    mlir::RewritePatternSet patterns(&getContext());
+    patterns.add<ConvertAddOp>(typeConverter, &getContext());
+
+    if (failed(applyFullConversion(getOperation(), target,
+                                   std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+};
+
+// Pass creator function
+std::unique_ptr<mlir::Pass> createConvertMyDialectToArithPass() {
+  return std::make_unique<MyDialectToArithLoweringPass>();
+}
+
+// Registration entry point
+void registerConvertMyDialectToArithPass() {
+  mlir::PassRegistration<MyDialectToArithLoweringPass>([]() {
+    return createConvertMyDialectToArithPass();
+  });
+}
+
+} // namespace my_dialect
