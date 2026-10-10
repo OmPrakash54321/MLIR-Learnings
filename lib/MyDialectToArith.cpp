@@ -5,8 +5,12 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/IR/BuiltinOps.h"
 
 #include "MyDialectPasses.h"
+#include "MyDialect.h"
+#include "MyOps.h"
 
 namespace my_dialect {
 
@@ -20,7 +24,17 @@ public:
   mlir::LogicalResult
   matchAndRewrite(AddOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Location loc = op.getLoc();
+    // initially, my written code was a bit different.
+    // coz, my reference was torchToArith, there was a similar conversion from torch.add to arith.addf
+    // but there it was a scalar value. But in my case, it is a tensor.
+    // luckily for me, arith also support tensor - so, no big conversion here.
+
+    // and initially, i first converted the inputs to the output type (Note 'output' not 'target')
+    // then passes those target converted & output type converted inputs to the rewriter
+    // Here, the output type is directly passed to the rewriter, so i guess the inputs will directly be 
+    // converted to the output type
+    // mlir::Location loc = op.getLoc(); // -> not required for replaceOpWithNewOp
+
     mlir::Type outputType =
         this->getTypeConverter()->convertType(op.getResult().getType());
 
@@ -32,10 +46,10 @@ public:
 
     if (llvm::isa<mlir::FloatType>(elemType)) {
       rewriter.replaceOpWithNewOp<mlir::arith::AddFOp>(
-          op, outputType, adaptor.getA(), adaptor.getB());
+          op, outputType, adaptor.getLhs(), adaptor.getRhs());
     } else if (llvm::isa<mlir::IntegerType>(elemType)) {
       rewriter.replaceOpWithNewOp<mlir::arith::AddIOp>(
-          op, outputType, adaptor.getA(), adaptor.getB());
+          op, outputType, adaptor.getLhs(), adaptor.getRhs());
     } else {
       return rewriter.notifyMatchFailure(
           op, "unsupported result element type: expected int or float");
@@ -48,10 +62,15 @@ public:
 // -----------------------------------------------------------------------------
 // Lowering Pass Class
 // -----------------------------------------------------------------------------
-class MyDialectToArithLoweringPass
-    : public impl::MyDialectToArithLoweringPassBase<
-          MyDialectToArithLoweringPass> {
+class MyDialectToArithLoweringPass : 
+    public mlir::PassWrapper<MyDialectToArithLoweringPass, mlir::OperationPass<mlir::ModuleOp>> {
 public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MyDialectToArithLoweringPass)
+
+  // // Optional: Define the pass argument (for the command line flag) and description
+  llvm::StringRef getArgument() const override { return "convert-my-dialect-to-arith"; }
+  llvm::StringRef getDescription() const override { return "Lower MyDialect to Arith dialect."; }
+
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
     registry.insert<mlir::func::FuncDialect>();
     registry.insert<mlir::arith::ArithDialect>();
@@ -60,6 +79,8 @@ public:
   }
 
   void runOnOperation() override {
+    mlir::ModuleOp module = getOperation();
+
     mlir::ConversionTarget target(getContext());
 
     // Mark lower-level dialects as legal target states
@@ -75,9 +96,11 @@ public:
     typeConverter.addConversion([](mlir::Type type) { return type; });
 
     mlir::RewritePatternSet patterns(&getContext());
+    target.addIllegalOp<AddOp>();
     patterns.add<ConvertAddOp>(typeConverter, &getContext());
+    target.addLegalOp<mlir::ModuleOp>(); // need this to be legal coz, the mlir outputs everything in a module
 
-    if (failed(applyFullConversion(getOperation(), target,
+    if (failed(applyFullConversion(module, target,
                                    std::move(patterns)))) {
       return signalPassFailure();
     }
