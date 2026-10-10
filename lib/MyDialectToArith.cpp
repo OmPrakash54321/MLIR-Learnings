@@ -59,6 +59,55 @@ public:
   }
 };
 
+class ConvertReluOp: public mlir::OpConversionPattern<ReluOp> {
+public:
+  // Instatantiate the parent constructor
+  using mlir::OpConversionPattern<ReluOp>::OpConversionPattern;
+
+  mlir::LogicalResult 
+  matchAndRewrite(ReluOp op, OpAdaptor adaptor, mlir::ConversionPatternRewriter &rewriter) const override {
+    // create a zero tensor of float or int based on the other input
+    // how to create this zero tensor? what do we need?
+    // need to get the ranked type of the adaptop input
+    // and get the type of the elemnts inside the tensor
+    // now construct the denseElementAttr coz that is how we create a tensor in mlir using arith - arith.constant dense<0.0f> : tensor<2.f32>
+    // now plug this in the mlir code
+    // then convert the my_dialect::relu to arith::maximumf or arith::maximumint
+
+    // get the shape of the tensor
+    auto rankedType = mlir::dyn_cast<mlir::RankedTensorType>(adaptor.getInput().getType());
+    if (!rankedType) {
+      return rewriter.notifyMatchFailure(op, "Expected ranked tensor type");
+    }
+    // get the type of the elements within that tensor
+    mlir::Type elementType = rankedType.getElementType();
+
+    bool isFloat = false;
+    // Create a tensor of zero(float/int)
+    mlir::DenseElementsAttr zeroAttr;
+    if (auto elType = mlir::dyn_cast<mlir::FloatType>(elementType)) {
+      zeroAttr = mlir::DenseElementsAttr::get(rankedType, mlir::APFloat(elType.getFloatSemantics(), 0));
+      isFloat = true;
+    } else if (auto elType = mlir::dyn_cast<mlir::IntegerType>(elementType)) {
+      zeroAttr = mlir::DenseElementsAttr::get(rankedType, mlir::APInt(elType.getWidth(), 0, true));
+    } else {
+      return rewriter.notifyMatchFailure(op, "unsupported operand type");
+    }
+
+    // Plug this in the IR
+    auto zeroTensor = rewriter.create<mlir::arith::ConstantOp>(op.getLoc(), rankedType, zeroAttr);
+
+    // convert
+    if (isFloat) {
+        rewriter.replaceOpWithNewOp<mlir::arith::MaximumFOp>(op, zeroTensor, adaptor.getInput());
+    } else {
+        rewriter.replaceOpWithNewOp<mlir::arith::MaxSIOp>(op, zeroTensor, adaptor.getInput());
+    }    
+
+    return mlir::success();
+  }
+};
+
 // -----------------------------------------------------------------------------
 // Lowering Pass Class
 // -----------------------------------------------------------------------------
@@ -96,8 +145,8 @@ public:
     typeConverter.addConversion([](mlir::Type type) { return type; });
 
     mlir::RewritePatternSet patterns(&getContext());
-    target.addIllegalOp<AddOp>();
-    patterns.add<ConvertAddOp>(typeConverter, &getContext());
+    target.addIllegalOp<AddOp, ReluOp>();
+    patterns.add<ConvertAddOp, ConvertReluOp>(typeConverter, &getContext());
     target.addLegalOp<mlir::ModuleOp>(); // need this to be legal coz, the mlir outputs everything in a module
 
     if (failed(applyFullConversion(module, target,

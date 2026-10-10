@@ -45,11 +45,11 @@ def ReluOp: Op<My_Dialect, "relu", [
 
     let arguments = (ins 
     AnyTensor:$input,
-    F32Attr:$alpha
+    OptionalAttr<F32Attr>:$alpha
     );
     let results = (outs AnyTensor:$result);
 
-    let assemblyFormat = "$input attr-dict `:` type($result)";
+    let assemblyFormat = "$input (`alpha` $alpha^) ? attr-dict `:` type($result)";
 }
 
 def PrintOp: Op<My_Dialect, "print", []> {
