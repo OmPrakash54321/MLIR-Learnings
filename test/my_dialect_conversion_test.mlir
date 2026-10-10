@@ -12,3 +12,8 @@ func.func @relu_tensors_i(%arg0: tensor<4xi32>) -> tensor<4xi32> {
     %res = my_dialect.relu %arg0: tensor<4xi32>
     func.return %res: tensor<4xi32>
 }
+
+func.func @print_tensors(%arg0: tensor<4xf32>) -> () {
+    my_dialect.print %arg0: tensor<4xf32>
+    return
+}

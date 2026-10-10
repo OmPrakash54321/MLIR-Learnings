@@ -2,6 +2,10 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -108,6 +112,54 @@ public:
   }
 };
 
+class ConvertPrintOp: public mlir::OpConversionPattern<PrintOp> {
+public:
+  using mlir::OpConversionPattern<PrintOp>::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(PrintOp op, OpAdaptor adaptor, mlir::ConversionPatternRewriter &rewriter) const override {
+    // so, to convert PrintOp which has the tensors as the input
+    // convert to vector.print
+    // but cant be directly converted as tensor is just a mathematical concept 
+    // which does not occupy any physical memory in RAM
+    // but ultimately when the print is called by the llvm, the print requires a actual memory to
+    // load and print
+    // that's why it is required to convert the tensor to memref -> then to vector.print during lowering.
+
+    // so, get the memory Reference type & convert the input tensor to memory reference by bufferization
+    // then create an index vector which is required to be passed to vector.print
+    // now create the vector type
+    // now print the vector
+
+    auto input = adaptor.getInput();
+    auto inputRankedType= mlir::dyn_cast<mlir::RankedTensorType>(input.getType());
+    if (!inputRankedType) {
+      return rewriter.notifyMatchFailure(op, "The type is unsupported or unranked");
+    }
+
+    // auto memrefType = mlir::MemRefType::get(inputRankedType.getShape(), inputRankedType.getElementType());
+    // auto castOp = rewriter.create<mlir::UnrealizedConversionCastOp>(op.getLoc(), memrefType, input); // loc, target Type, input value
+    // mlir::Value memRefVal = castOp.getResult(0);
+
+    auto loc = op.getLoc();
+    auto zeroAttr = rewriter.getIndexAttr(0);
+    mlir::SmallVector<mlir::Value, 4> indices;
+    for (int64_t i = 0; i < inputRankedType.getRank(); ++i) {
+        indices.push_back(rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIndexType(), zeroAttr));
+    }
+
+    auto vectorType = mlir::VectorType::get(inputRankedType.getShape(), inputRankedType.getElementType());
+    // std::optional<mlir::Value> paddingOpt = std::nullopt;
+    auto zeroPaddingAttr = rewriter.getZeroAttr(inputRankedType.getElementType());
+    auto paddingVal = rewriter.create<mlir::arith::ConstantOp>(loc, inputRankedType.getElementType(), zeroPaddingAttr);
+    auto vectorLoad = rewriter.create<mlir::vector::TransferReadOp>(op.getLoc(), vectorType, input, indices, paddingVal);
+
+    rewriter.create<mlir::vector::PrintOp>(op.getLoc(), vectorLoad);
+
+    rewriter.eraseOp(op);
+    return mlir::success();
+  }
+};
+
 // -----------------------------------------------------------------------------
 // Lowering Pass Class
 // -----------------------------------------------------------------------------
@@ -125,6 +177,7 @@ public:
     registry.insert<mlir::arith::ArithDialect>();
     registry.insert<mlir::tensor::TensorDialect>();
     registry.insert<mlir::vector::VectorDialect>();
+    registry.insert<mlir::memref::MemRefDialect>();
   }
 
   void runOnOperation() override {
@@ -134,9 +187,10 @@ public:
 
     // Mark lower-level dialects as legal target states
     target.addLegalDialect<mlir::arith::ArithDialect,
-                          mlir::tensor::TensorDialect,
+                          // mlir::tensor::TensorDialect,
                           mlir::vector::VectorDialect,
-                          mlir::func::FuncDialect>();
+                          mlir::func::FuncDialect,
+                          mlir::memref::MemRefDialect>();
 
     // Mark custom source dialect as illegal
     target.addIllegalDialect<MyDialect>();
@@ -145,8 +199,10 @@ public:
     typeConverter.addConversion([](mlir::Type type) { return type; });
 
     mlir::RewritePatternSet patterns(&getContext());
-    target.addIllegalOp<AddOp, ReluOp>();
-    patterns.add<ConvertAddOp, ConvertReluOp>(typeConverter, &getContext());
+
+    target.addIllegalOp<AddOp, ReluOp, PrintOp>();
+    patterns.add<ConvertAddOp, ConvertReluOp, ConvertPrintOp>(typeConverter, &getContext());
+
     target.addLegalOp<mlir::ModuleOp>(); // need this to be legal coz, the mlir outputs everything in a module
 
     if (failed(applyFullConversion(module, target,
