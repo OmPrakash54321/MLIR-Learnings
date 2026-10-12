@@ -66,3 +66,25 @@ def PrintOp: Op<My_Dialect, "print", []> {
     let assemblyFormat = "$input attr-dict `:` type($input)";
 }
 
+////////////////////////// Fused Op ///////////////////////
+
+def AddReluOp: Op<My_Dialect, "add_relu", [
+    Pure,
+    Commutative, 
+    SameOperandsAndResultType,
+]> {
+    let summary = "Add 2 tensors and perform relu on top of it";
+    let description = [{
+        The my_dialect.add_relu operation takes 2 tensors as input and perfoms addition.
+        Followed by Relu op on the output of add.
+        Ensures both the shapes and types are the same.
+    
+        Example:
+        %res = my_dialect.add_relu %in1, %in2: tensor<4x2xf32>
+    }];
+
+    let arguments = (ins AnyTensor:$lhs, AnyTensor:$rhs);
+    let results = (outs AnyTensor:$result);
+
+    let assemblyFormat = "$lhs attr-dict `,` $rhs `:` type($result)";
+}

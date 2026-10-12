@@ -31,6 +31,7 @@ int main(int argc, char** argv) {
     registry.insert<my_dialect::MyDialect>();
 
     my_dialect::registerConvertMyDialectToArithPass();
+    my_dialect::registerTransformationPass(); // fusion
 
     // Use MlirOptMain as the entry point
     return mlir::asMainReturnCode(

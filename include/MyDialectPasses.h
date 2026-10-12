@@ -10,11 +10,13 @@ class Pass;
 
 namespace my_dialect {
 
-// 1. Declare the pass creation function
+// conversion pass
 std::unique_ptr<mlir::Pass> createConvertMyDialectToArithPass();
-
-// 2. Declare the pass registration function
 void registerConvertMyDialectToArithPass();
+
+// transformatio (fusion) pass
+std::unique_ptr<mlir::Pass> createTransformationPass();
+void registerTransformationPass();
 
 } // namespace my_dialect
 
